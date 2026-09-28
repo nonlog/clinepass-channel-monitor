@@ -31,6 +31,8 @@ import (
 	"encoding/json"
 	"unsafe"
 
+	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
+
 	"github.com/wkeking/clinepass-channel-monitor/internal/buildinfo"
 )
 
@@ -66,7 +68,31 @@ func Call(method string, payload []byte) ([]byte, bool) {
 	}
 	out := C.GoBytes(response.ptr, C.int(response.len))
 	C.free_host_buffer(response.ptr, response.len)
-	return out, true
+	return unwrapHostResponse(out)
+}
+
+// unwrapHostResponse decodes CPA's host-callback RPC envelope and returns only its
+// result payload. Older hosts that returned the business object directly remain
+// supported so the monitor does not regress on pre-envelope CPA builds.
+func unwrapHostResponse(raw []byte) ([]byte, bool) {
+	if len(raw) == 0 {
+		return nil, true
+	}
+	var shape map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &shape); err != nil {
+		return raw, true
+	}
+	if _, isEnvelope := shape["ok"]; !isEnvelope {
+		return raw, true
+	}
+	var envelope pluginabi.Envelope
+	if err := json.Unmarshal(raw, &envelope); err != nil || !envelope.OK {
+		return nil, false
+	}
+	if len(envelope.Result) == 0 || string(envelope.Result) == "null" {
+		return nil, true
+	}
+	return append([]byte(nil), envelope.Result...), true
 }
 
 const maxLogFieldLen = 512
