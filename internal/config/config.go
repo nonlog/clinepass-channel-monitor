@@ -18,6 +18,8 @@ import (
 const (
 	// DefaultPlanBaseURL is Cline's public API. It is a default, never a hard requirement.
 	DefaultPlanBaseURL = "https://api.cline.bot/api/v1"
+	// DefaultPlanConfigPath is CPA canonical in-container config path.
+	DefaultPlanConfigPath = "/CLIProxyAPI/config.yaml"
 	// DefaultPlanRefresh is how often the subscription quota is refreshed, and
 	// DefaultPlanUsageRefresh how often the official per-request records are paged. The
 	// usage interval is the longer one on purpose: the quota calls are cheap, while the
@@ -159,6 +161,7 @@ func Default() Config {
 		Timezone:           defaultTimezone,
 		PlanEnabled:        true,
 		PlanBaseURL:        DefaultPlanBaseURL,
+		PlanConfigPath:     DefaultPlanConfigPath,
 		PlanRefresh:        Duration{Value: defaultPlanRefresh, Set: true},
 		PlanDailyEnabled:   true,
 		PlanUsageEnabled:   true,

@@ -174,6 +174,56 @@ const store={
   del(k){try{localStorage.removeItem(k)}catch(e){}}
 };
 
+function decodePanelStorage(raw){
+  if(typeof raw!=="string"||!raw)return raw;
+  let prefix="",seed="";
+  if(raw.startsWith("enc::v2::")){
+    prefix="enc::v2::";
+    seed="cli-proxy-api-webui::secure-storage|v2|"+location.host;
+  }else if(raw.startsWith("enc::v1::")){
+    prefix="enc::v1::";
+    seed="cli-proxy-api-webui::secure-storage|"+location.host+"|"+navigator.userAgent;
+  }else return raw;
+  const encoded=atob(raw.slice(prefix.length));
+  const cipher=Uint8Array.from(encoded,c=>c.charCodeAt(0));
+  const key=new TextEncoder().encode(seed);
+  const plain=new Uint8Array(cipher.length);
+  for(let i=0;i<cipher.length;i++)plain[i]=cipher[i]^key[i%key.length];
+  return new TextDecoder().decode(plain);
+}
+
+function panelManagementKey(){
+  try{
+    let raw=store.get("cli-proxy-auth");
+    if(raw){
+      raw=decodePanelStorage(raw);
+      const parsed=JSON.parse(raw);
+      const saved=parsed&&parsed.state?parsed.state:parsed;
+      if(saved&&typeof saved.managementKey==="string"&&saved.managementKey.trim())return saved.managementKey.trim();
+    }
+    for(const legacyKey of ["managementKey","authToken",TOKEN_KEY]){
+      let legacy=store.get(legacyKey);
+      if(!legacy)continue;
+      legacy=decodePanelStorage(legacy);
+      try{
+        const parsed=JSON.parse(legacy);
+        if(typeof parsed==="string"&&parsed.trim())return parsed.trim();
+        const state=parsed&&parsed.state?parsed.state:null;
+        const value=parsed&&typeof parsed==="object"?(parsed.managementKey||parsed.token||(state&&state.managementKey)):"";
+        if(typeof value==="string"&&value.trim())return value.trim();
+      }catch(e){
+        if(typeof legacy==="string"&&legacy.trim())return legacy.trim();
+      }
+    }
+  }catch(e){}
+  return "";
+}
+
+function authHeaders(){
+  const key=panelManagementKey();
+  return key?{"Authorization":"Bearer "+key}:{};
+}
+
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 function n(v){return v==null?0:Number(v)||0}
@@ -204,7 +254,7 @@ function effort(v){const map={max:"最高",xhigh:"极高",high:"高",medium:"中
 async function api(path,params){
   const url=new URL(BASE+path,location.origin);
   if(params)Object.entries(params).forEach(([k,v])=>{if(v!==""&&v!=null)url.searchParams.set(k,v)});
-  const res=await fetch(url,{headers:{"Authorization":"Bearer "+store.get(TOKEN_KEY)},cache:"no-store"});
+  const res=await fetch(url,{headers:authHeaders(),cache:"no-store"});
   if(res.status===401||res.status===403){const e=new Error("unauthorized");e.code=res.status;throw e}
   if(!res.ok)throw new Error("HTTP "+res.status);
   return res.json();
@@ -582,7 +632,7 @@ $("export").addEventListener("click",()=>{
   const params={window:$("window").value,channel:$("f-channel").value.trim(),model:$("f-model").value.trim(),
     source:$("f-source").value.trim(),result:$("f-result").value};
   Object.entries(params).forEach(([k,v])=>{if(v!==""&&v!=null)url.searchParams.set(k,v)});
-  fetch(url,{headers:{"Authorization":"Bearer "+store.get(TOKEN_KEY)},cache:"no-store"}).then(res=>{
+  fetch(url,{headers:authHeaders(),cache:"no-store"}).then(res=>{
     if(!res.ok)throw new Error("HTTP "+res.status);
     return res.blob();
   }).then(blob=>{
@@ -592,9 +642,9 @@ $("export").addEventListener("click",()=>{
   }).catch(err=>{alert("导出失败："+err.message)});
 });
 
-if(!store.get(TOKEN_KEY))$("gate").classList.remove("hidden");
+if(!panelManagementKey())$("gate").classList.remove("hidden");
 load();
-setInterval(()=>{if(store.get(TOKEN_KEY))load()},60000);
+setInterval(()=>{if(panelManagementKey())load()},60000);
 })();
 </script>
 </body>

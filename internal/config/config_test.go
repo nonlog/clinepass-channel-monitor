@@ -29,6 +29,9 @@ func TestFixedDefaults(t *testing.T) {
 	if got := cfg.PlanRefresh.Or(0); got != 5*time.Minute {
 		t.Errorf("plan_refresh default = %s, want 5m", got)
 	}
+	if cfg.PlanConfigPath != DefaultPlanConfigPath {
+		t.Errorf("plan_config_path default = %q, want %q", cfg.PlanConfigPath, DefaultPlanConfigPath)
+	}
 }
 
 // TestParseIgnoresRemovedKeys keeps an existing configuration block loadable: a deployment

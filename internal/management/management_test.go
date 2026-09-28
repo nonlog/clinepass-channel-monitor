@@ -70,7 +70,7 @@ func TestIndexPageCarriesNoData(t *testing.T) {
 			t.Errorf("page must not contain recorded data, found %q", needle)
 		}
 	}
-	for _, needle := range []string{"/v0/management/plugins/clinepass-channel-monitor", "localStorage", "Authorization"} {
+	for _, needle := range []string{"/v0/management/plugins/clinepass-channel-monitor", "localStorage", "Authorization", "cli-proxy-auth", "enc::v2::", "secure-storage|v2|", "panelManagementKey"} {
 		if !strings.Contains(page, needle) {
 			t.Errorf("page is missing %q", needle)
 		}
