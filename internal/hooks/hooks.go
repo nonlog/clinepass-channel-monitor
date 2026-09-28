@@ -501,13 +501,13 @@ func Usage(request []byte) ([]byte, error) {
 		return abi.OK(map[string]any{})
 	}
 	st.IncRequests()
-	if !hostAllowed(&record, cfg, st) {
-		return abi.OK(map[string]any{})
-	}
 	observed := st.ConsumeChannel(store.Identity{
 		SessionID: strings.TrimSpace(record.SessionID),
 		Model:     strings.TrimSpace(record.Model),
 	}, record.RequestedAt, record.Latency)
+	if !hostAllowed(&record, cfg, st, observed) {
+		return abi.OK(map[string]any{})
+	}
 	if !observationAccepted(&record, cfg, observed) {
 		return abi.OK(map[string]any{})
 	}
@@ -577,24 +577,28 @@ func observationAccepted(record *pluginapi.UsageRecord, cfg config.Config, obser
 	return true
 }
 
-// hostAllowed applies the row-level judgement: the usage record's base_url host must
-// be one of the configured hosts. An empty hosts list disables this rule (marker-only).
-func hostAllowed(record *pluginapi.UsageRecord, cfg config.Config, st *store.Store) bool {
+// hostAllowed applies the row-level judgement. Native executors expose base_url on
+// usage records, so it must match one of the configured hosts. Plugin executors do not
+// currently attach their upstream base URL to the outer usage record; in that case a
+// successfully joined channel observation is stronger evidence that this is the Cline
+// request we observed, and the row is accepted instead of being silently discarded.
+func hostAllowed(record *pluginapi.UsageRecord, cfg config.Config, st *store.Store, observed *store.PendingChannel) bool {
 	if len(cfg.Hosts) == 0 {
 		return true
 	}
-	if _, matched := cfg.HostMatched(record.BaseURL); !matched {
-		// Self-diagnosis: the request reached an upstream that is not in hosts. Surfaced
-		// through /health so a wrong hosts list is visible instead of silent.
-		st.RecordUnmatchedHost(store.UnmatchedHostSample{
-			Host:     config.HostFromBaseURL(record.BaseURL),
-			Provider: record.Provider,
-			Model:    record.Model,
-			Time:     time.Now().Format(time.RFC3339),
-		})
-		return false
+	if _, matched := cfg.HostMatched(record.BaseURL); matched {
+		return true
 	}
-	return true
+	if strings.TrimSpace(record.BaseURL) == "" && observed != nil {
+		return true
+	}
+	st.RecordUnmatchedHost(store.UnmatchedHostSample{
+		Host:     config.HostFromBaseURL(record.BaseURL),
+		Provider: record.Provider,
+		Model:    record.Model,
+		Time:     time.Now().Format(time.RFC3339),
+	})
+	return false
 }
 
 // buildEvent maps a usage record onto the recorded row.
